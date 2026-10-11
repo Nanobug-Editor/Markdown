@@ -11,6 +11,38 @@ fn oversized_derived_work_returns_a_limit_without_weakening_small_previews() {
     assert!(blocks("# 正常\n\n- [ ] Task\n", "zh-CN").is_ok());
 }
 
+/// Empty SDK locales use the default language; retiring a large cache must not trap an empty source.
+#[test]
+fn default_locale_preview_recovers_from_budget_through_an_empty_document() {
+    use crate::{Source, State};
+    use plugin_protocol::api;
+    let mut state = State::default();
+    for (revision, text, limited) in [
+        (1, "# Before\n".to_owned(), false),
+        (2, "paragraph\n\n".repeat(30_000), true),
+        (3, String::new(), false),
+        (4, "# After\n".to_owned(), false),
+    ] {
+        state.source = Some(Source {
+            version: api::DocumentVersion {
+                id: "source".into(),
+                path: "empty-locale.md".into(),
+                revision,
+            },
+            text,
+        });
+        state.refresh();
+        let view = state.view();
+        assert!(view.document.validate().is_ok());
+        assert_eq!(state.preview_limited, limited, "source revision {revision}");
+        assert_eq!(
+            view.document.active_node("preview-limit").is_some(),
+            limited
+        );
+        assert_eq!(view.document.source.as_ref().unwrap().revision, revision);
+    }
+}
+
 /// Traverse only the public node tree, keeping assertions independent of the parser's internal representation.
 fn descendants(nodes: &[ui::Node]) -> Vec<&ui::Node> {
     let mut result = Vec::new();

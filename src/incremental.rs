@@ -19,7 +19,8 @@ impl Parsed {
     /// structural edits and document-wide references expand to a complete correct parse.
     pub fn update(&mut self, text: &str, locale: &str) {
         self.changed = None;
-        if self.text == text && self.locale == locale {
+        // A retired cache has no successful parse, even when its cleared keys match an empty input.
+        if !self.limited && self.text == text && self.locale == locale {
             self.changed = Some((0, 0, 0));
             return;
         }

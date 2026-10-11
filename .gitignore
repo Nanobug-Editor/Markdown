@@ -1,0 +1,8 @@
+# Generated packages and build caches are not release sources.
+/target/
+/dist/
+*.zip
+*.log
+**/node_modules/
+/.vscode/
+/.idea/

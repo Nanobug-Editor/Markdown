@@ -1,0 +1,70 @@
+# Build candidates with a fixed public host SDK; publishing and marketplace review remain explicit.
+name: Independent plugin package
+on:
+  push:
+    branches: [main]
+    # Stable tags reuse this source commit; they do not repeat its branch build.
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+env:
+  RUSTUP_TOOLCHAIN: '1.98.1'
+  RUST_MIN_STACK: '16777216'
+  CARGO_TERM_COLOR: never
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          path: plugin
+          persist-credentials: false
+      - name: Read the committed SDK pin
+        id: sdk
+        shell: pwsh
+        run: |
+          # PR input can select a public revision, but receives no release or write credentials.
+          $pin = Get-Content plugin/host-sdk.json -Raw | ConvertFrom-Json
+          if ($pin.schema -ne 1 -or $pin.repository -ne 'T-miracle/Nanobug' -or $pin.revision -notmatch '^[0-9a-f]{40}$') {
+            throw 'Invalid public host SDK pin'
+          }
+          "revision=$($pin.revision)" >> $env:GITHUB_OUTPUT
+      - name: Prepare the declared CI toolchain
+        shell: pwsh
+        run: |
+          # Only the disposable CI runner installs this declared toolchain; local builds report missing tools.
+          rustup toolchain install 1.98.1 --profile minimal --target wasm32-wasip2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/checkout@v6
+        with:
+          repository: T-miracle/Nanobug
+          ref: ${{ steps.sdk.outputs.revision }}
+          path: host
+          persist-credentials: false
+      - name: Build the public host entry
+        working-directory: host
+        run: cargo build --locked -p editor-app
+      - name: Test and package this independent project
+        shell: pwsh
+        run: |
+          $pluginHost = Join-Path $env:GITHUB_WORKSPACE 'host/target/debug/editor-app.exe'
+          $project = Join-Path $env:GITHUB_WORKSPACE 'plugin'
+          $output = Join-Path $env:GITHUB_WORKSPACE 'artifact'
+          $description = Get-Content plugin/nanobug-plugin.json -Raw | ConvertFrom-Json
+          if ($description.wasm) {
+            & $pluginHost --plugin-cargo (Join-Path $project $description.wasm.manifest) test --lib --locked
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
+          & $pluginHost --plugin-package $project --output $output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Record the complete ZIP bytes; a later rebuild does not replace a published attachment.
+          Get-ChildItem -LiteralPath $output -Filter '*.zip' | ForEach-Object {
+            $digest = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$digest  $($_.Name)" | Set-Content -LiteralPath ($_.FullName + '.sha256') -Encoding utf8
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: plugin-${{ github.sha }}-windows-x86_64
+          path: artifact
+          if-no-files-found: error

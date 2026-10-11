@@ -23,6 +23,15 @@ impl Parsed {
             self.changed = Some((0, 0, 0));
             return;
         }
+        // Reject oversized derived work before prefix scans or the eager CommonMark parser.
+        // The native document remains authoritative and editable; no oversized cache is retained.
+        if text.len() > super::preview::SOURCE_BUDGET {
+            self.nodes.clear();
+            self.text.clear();
+            self.locale.clear();
+            self.limited = true;
+            return;
+        }
         let local = self.locale == locale && self.replace_block(text, locale);
         if !local {
             self.nodes = match super::preview::blocks(text, locale) {
@@ -208,6 +217,20 @@ mod tests {
         );
     }
 
+    /// An oversized source retires derived parse state; returning below the budget rebuilds a fresh scene.
+    #[test]
+    fn oversized_preview_can_recover_without_reusing_old_blocks() {
+        let mut cache = Parsed::default();
+        cache.update("# Old\n", "en");
+        cache.update(&"Paragraph.\n\n".repeat(30_000), "en");
+        assert!(cache.limited && cache.nodes.is_empty() && cache.text.is_empty());
+        cache.update("# New\n", "en");
+        assert!(!cache.limited);
+        assert_eq!(
+            semantic(cache.nodes),
+            semantic(super::super::preview::blocks("# New\n", "en").unwrap())
+        );
+    }
     /// IDs are intentionally stable rather than regenerated offsets; compare the rendered semantics separately.
     fn semantic(mut nodes: Vec<Node>) -> Vec<Node> {
         fn scrub(node: &mut Node) {

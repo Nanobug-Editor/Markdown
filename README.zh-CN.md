@@ -4,7 +4,7 @@
 
 Markdown 源码编辑、原生预览、格式工具栏和同步滚动。 插件 ID 为 `markdown`，首次独立发布版本为 `0.17.1`；原有安装身份、设置和私有数据保持连续。
 
-项目名为 **Markdown for Nanobug**。已发布的 `v0.17.1` 源码和 ZIP 字节继续冻结；本次说明更新不改变安装 ID，也不替换版本附件。
+项目名为 **Markdown for Nanobug**。`0.17.2` 保留局部编辑后任务框的键盘焦点，并在解析前限制过量预览工作；超过 256 KiB 预览预算的源码仍可正常编辑。已发布的 `v0.17.1` 源码和 ZIP 字节继续冻结，安装 ID 保持不变。
 
 本仓库是业务维护来源。[市场注册仓库](https://github.com/T-miracle/Nanobug-Plugin-Marketplace)负责审核，安装包保存在本仓库 Releases。每版都通过市场 PR 和人工审核，不以 Release 发布代替上架。
 

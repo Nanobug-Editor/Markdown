@@ -50,9 +50,16 @@ impl Part<'_> {
     }
 }
 
+/// Bound eager parser input as well as its output; native source editing has no preview-size limit.
+pub(super) const SOURCE_BUDGET: usize = 256 * 1024;
+
 /// Parse approved extensions with finite intermediate work before native quota validation.
 /// Oversized events/depth return a limit result, preserving source editing and the guest instance.
 pub(super) fn blocks(source: &str, locale: &str) -> Result<Vec<ui::Node>, ()> {
+    // pulldown-cmark scans the full input during construction, before event quotas can run.
+    if source.len() > SOURCE_BUDGET {
+        return Err(());
+    }
     let mut stack = vec![Element {
         tag: None,
         range: 0..source.len(),

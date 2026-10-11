@@ -117,7 +117,15 @@ impl Parsed {
             return false;
         }
         self.generation = self.generation.wrapping_add(1);
-        rename(&mut node, self.generation);
+        let mut task_ids = std::collections::BTreeMap::new();
+        self.nodes[index].visit(&mut |old| {
+            if matches!(old.kind, ui::Kind::Checkbox { .. }) {
+                if let Some(range) = old.source_range {
+                    task_ids.insert((range.start, range.end), old.id.clone());
+                }
+            }
+        });
+        rename(&mut node, self.generation, &task_ids);
         node.id = self.nodes[index].id.clone();
         self.nodes[index] = node;
         for following in &mut self.nodes[index + 1..] {
@@ -130,17 +138,31 @@ impl Parsed {
     }
 }
 
-/// Generated descendant IDs are document-relative, while retained siblings keep stable identities.
-fn rename(node: &mut Node, generation: u64) {
+/// Changed descendants get a collision-free namespace; the same parsed task marker retains
+/// its native focus identity. Its checked state still comes solely from the fresh source parse.
+fn rename(
+    node: &mut Node,
+    generation: u64,
+    tasks: &std::collections::BTreeMap<(usize, usize), String>,
+) {
+    if matches!(node.kind, ui::Kind::Checkbox { .. }) {
+        if let Some(id) = node
+            .source_range
+            .and_then(|range| tasks.get(&(range.start, range.end)))
+        {
+            node.id = id.clone();
+            return;
+        }
+    }
     // A replacement namespace cannot collide with retained siblings after arbitrarily large insertions.
     node.id = format!("edit-{generation}-{}", node.id);
     match &mut node.kind {
         ui::Kind::Column { children } | ui::Kind::Row { children } => {
             for child in children {
-                rename(child, generation);
+                rename(child, generation, tasks);
             }
         }
-        ui::Kind::Scroll { content } => rename(content, generation),
+        ui::Kind::Scroll { content } => rename(content, generation, tasks),
         _ => {}
     }
 }
@@ -148,6 +170,44 @@ fn rename(node: &mut Node, generation: u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    /// Marker-only edits keep the same native keyboard target while its checked state changes.
+    #[test]
+    fn task_marker_edits_retain_interactive_identity_across_successive_toggles() {
+        let original = "- [ ] 中文\n  - [X] 嵌套\n";
+        let mut cache = Parsed::default();
+        cache.update(original, "zh-CN");
+        let tasks = |nodes: &[Node]| {
+            let mut result = Vec::new();
+            for node in nodes {
+                node.visit(&mut |node| {
+                    if let ui::Kind::Checkbox { checked, .. } = &node.kind {
+                        result.push((node.id.clone(), *checked));
+                    }
+                });
+            }
+            result
+        };
+        let initial = tasks(&cache.nodes);
+        assert_eq!(initial.len(), 2);
+        cache.update(&original.replacen("[ ]", "[x]", 1), "zh-CN");
+        let checked = tasks(&cache.nodes);
+        assert_eq!(
+            checked[0],
+            (initial[0].0.clone(), true),
+            "a local parse cannot discard native task focus"
+        );
+        assert_eq!(
+            checked[1], initial[1],
+            "unmodified nested task retains its identity"
+        );
+        cache.update(original, "zh-CN");
+        assert_eq!(
+            tasks(&cache.nodes),
+            initial,
+            "the next key toggles the same control back"
+        );
+    }
+
     /// IDs are intentionally stable rather than regenerated offsets; compare the rendered semantics separately.
     fn semantic(mut nodes: Vec<Node>) -> Vec<Node> {
         fn scrub(node: &mut Node) {

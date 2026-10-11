@@ -347,7 +347,9 @@ impl State {
             self.preview_limited = self.parsed.limited;
             self.parsed.nodes.clone()
         });
-        if let Some(source) = &self.source {
+        if let Some(source) = &self.source
+            && !self.preview_limited
+        {
             self.navigation_index
                 .update(&source.text, self.parsed.changed);
         } else {

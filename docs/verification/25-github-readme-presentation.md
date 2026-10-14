@@ -19,3 +19,5 @@ Cargo、manifest.json、plugin.toml 版本均为 0.18.2，protocol 7；只新增
 通过隔离宿主运行 --plugin-cargo Cargo.toml test --lib --locked 为 85 passed、0 failed、0 ignored；--plugin-package 成功。实际 SDK 摘要为 997d337a5c4e07aca0094244bdfc0e426e9d6a3f061adc932875074f11057a8a，新生成的 0.18.2 候选 ZIP SHA-256 为 f3b03114865812b943af91fa3858c5dc4c79462efcfe3e8916dd5cf143bfa769。原首次本地包字节未替换；新包在宿主测试账本使用 markdown-0.18.2-readme-pr.zip 的独立名称，67 项内容不包含源码、SDK 或构建目录。
 
 新包的 8 项真实 Package → Manager → 原生测试全部通过，另有两项通用 GPUI 几何及一项最小 SDK 能力协商回归通过。宿主格式、非 UI workspace 测试（268 passed、256 ignored）、workspace check 及两仓库 diff 检查通过；ignored 项仅明确执行的用例计入通过。源码 PR 和固定 SDK 更新不发布或替换 Release，也不改变市场准入状态。
+
+PR #2 首轮 Windows CI 已通过。合并期间 main 新增 18982f2 的组织迁移更新，因此以普通合并保留 Nanobug-Editor/Markdown、Nanobug-Editor/Editor 和新的 CI 校验；SDK revision 仍固定为提供 ui.styles 的 0adfbb44bc265fe1c2afd5c93e07b4faacf558d3。源码、依赖、清单和插件行为与首轮候选完全相同，85 项单元再次通过；格式、diff 和 SDK pin 校验通过。更新后的 README 随包资产在独立临时目录重建，完整 ZIP SHA-256 为 ee386499245528499f6b04d3e3a61ba1b096f8b2208a308c7aaa069bdd36869e，之前的本地制品未替换。原生行为验收复用同一源码、SDK 和 WASM 输入的结果；最终远程 CI 与合并状态以 [PR #2](https://github.com/Nanobug-Editor/Markdown/pull/2) 为准。

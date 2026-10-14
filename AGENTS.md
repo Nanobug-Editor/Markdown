@@ -4,7 +4,7 @@
 
 ## 开始工作
 
-先检查 git status --short、README.md、manifest.json、nanobug-plugin.json 和 host-sdk.json，保留已有改动。市场规格、工单和交付记录统一见 [Nanobug Plugin Marketplace](https://github.com/T-miracle/Nanobug-Plugin-Marketplace/tree/main/docs)；本次迁移依据为工单 03，历史资料不自动授权其他任务。
+先检查 git status --short、README.md、manifest.json、nanobug-plugin.json 和 host-sdk.json，保留已有改动。市场规格、工单和交付记录统一见 [Nanobug Plugin Marketplace](https://github.com/Nanobug-Editor/Plugin-Marketplace/tree/main/docs)；本次迁移依据为工单 03，历史资料不自动授权其他任务。
 
 ## 实现和构建
 

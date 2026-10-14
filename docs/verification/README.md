@@ -26,6 +26,9 @@
 
 - [21 — 平台规格全文预览节点配额修复](21-platform-specification-preview-quota.md)（Markdown 0.17.0：实际原文完整预览和末尾滚动回归）。
 - [22 — 独立市场交付回归修复](22-marketplace-regressions-2026-10-11.md)（Markdown 0.17.2：76 项插件单元、88 项实际 WASM 原生集成通过；记录固定源码、SDK 和完整 ZIP 摘要）。
+- [23 — 内嵌 HTML 原生预览](23-embedded-html.md)（Markdown 0.18.0 本地候选：HTML 子集、受控图片与链接；实际验收范围见记录）。
+- [24 — HTML 图片 width/height](24-html-image-dimensions.md)（Markdown 0.18.1 本地候选：属性传递、通用原生几何、单边比例与说明布局，83 项单元及 3 项原生场景通过）。
+- [25 — GitHub README 图片语义与样式](25-github-readme-presentation.md)（Markdown 0.18.2 本地候选：align、alt 与 Primer 排版；实际验收范围见记录）。
 
 - 每张工单完成后在本目录建立对应编号的验收文档，并从此处和[工单目录](../tickets/README.md)链接。
 - 记录实际代码基线、包版本、命令、结果、原生可观察行为、失败归因、跳过项与平台限制。

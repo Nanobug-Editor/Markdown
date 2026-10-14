@@ -1,7 +1,7 @@
 {
   "id": "markdown",
   "name": "Markdown",
-  "version": "0.17.2",
+  "version": "0.18.2",
   "protocol": 7,
   "contributions": "plugin.toml",
   "component": "markdown.wasm",
@@ -36,6 +36,7 @@
       "editor.layout": "^1",
       "ui.tools": "^1",
       "ui.content_colors": "^1",
+      "ui.styles": "^1",
       "storage.private": ">=1.1, <2"
     }
   },

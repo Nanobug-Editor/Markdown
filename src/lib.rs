@@ -386,17 +386,19 @@ impl State {
         };
         // Hidden content must not expose old source ranges under the new toolbar authority.
         // Keep the parsed cache privately; showing the pane publishes current mapped blocks again.
-        let blocks = if self.display.mode == display::Mode::Source {
+        let mut blocks = if self.display.mode == display::Mode::Source {
             Vec::new()
         } else {
             self.blocks.clone()
         };
+        preview::space_blocks(&mut blocks);
         let body = ui::Node::column("preview-body", blocks)
-            .padding(12.)
-            .gap(8.);
+            .padding(32.)
+            .gap(0.);
         let mut document = ui::Document::new(preview_root(body)).revision(self.revision);
         // Every native preview block opts into the same generic GitHub role; source controls retain editor colors.
         preview::apply_theme(&mut document.root);
+        preview::style_document(&mut document);
         document.source = self.source.as_ref().map(|source| source.version.clone());
         document.editor_image_input = self.source.is_some();
         document.link_events = self.source.is_some();

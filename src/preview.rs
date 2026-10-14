@@ -1,10 +1,21 @@
-//! Converts CommonMark/GFM events into native blocks and controlled image declarations, never raw HTML loads.
+//! Converts CommonMark/GFM and embedded HTML into readonly native blocks and controlled resources.
 
 use plugin_protocol::ui;
 use pulldown_cmark::{CodeBlockKind, Event, Options, Parser, Tag, html};
 use std::ops::Range;
 
+pub(crate) mod embedded_html;
 mod inline;
+mod style;
+
+/// Apply the guest's documented content defaults and sibling spacing to one immutable native scene.
+pub(super) fn style_document(document: &mut ui::Document) {
+    style::defaults(document);
+}
+
+pub(super) fn space_blocks(nodes: &mut [ui::Node]) {
+    style::blocks(nodes);
+}
 
 /// Opt derived native blocks into the public GitHub palette without changing the editor's global theme.
 /// A block that already carries a deliberate role (a table header cell) keeps its own preset.
@@ -114,6 +125,19 @@ struct Renderer<'a> {
     locale: &'a str,
 }
 
+/// Muted quote text is separate from the container's border and insets, avoiding nested decoration.
+fn quote_roles(nodes: &mut [ui::Node]) {
+    for node in nodes {
+        match &mut node.kind {
+            ui::Kind::RichText { .. } | ui::Kind::Text { .. } if node.role.is_empty() => {
+                node.role = "github-quote-text".into();
+            }
+            ui::Kind::Column { children } | ui::Kind::Row { children } => quote_roles(children),
+            _ => {}
+        }
+    }
+}
+
 impl Renderer<'_> {
     /// Tight lists have bare inline events; buffer them as one paragraph rather than separate text nodes.
     fn blocks(&self, parts: &[Part<'_>]) -> Vec<ui::Node> {
@@ -178,24 +202,15 @@ impl Renderer<'_> {
                     .source_range(range)
                 }
                 Tag::List(start) => self.list(element, *start),
-                Tag::BlockQuote(_) => ui::Node::row(
-                    identity(&range, "quote"),
-                    vec![
-                        ui::Node::text(identity(&range, "quote-marker"), "│").width(12.),
-                        ui::Node::column(
-                            identity(&range, "quote-body"),
-                            self.blocks(&element.children),
-                        )
-                        .gap(6.)
-                        .grow(),
-                    ],
-                )
-                .gap(6.)
-                .source_range(range),
-                Tag::HtmlBlock => {
-                    ui::Node::text(identity(&range, "raw-html"), plain_text(&element.children))
+                Tag::BlockQuote(_) => {
+                    let mut children = self.blocks(&element.children);
+                    quote_roles(&mut children);
+                    ui::Node::column(identity(&range, "quote"), children)
+                        .role("github-quote")
+                        .gap(16.)
                         .source_range(range)
                 }
+                Tag::HtmlBlock => self.rich(&element.children, range, "html", false),
                 Tag::Heading { .. } => {
                     self.content(std::slice::from_ref(part), range, "heading", false)
                 }
@@ -210,17 +225,15 @@ impl Renderer<'_> {
             Part::Event(Event::Rule, _) => {
                 ui::Node::new(identity(&range, "rule"), ui::Kind::Separator).source_range(range)
             }
-            Part::Event(Event::Html(text), _) => {
-                ui::Node::text(identity(&range, "raw-html"), text.to_string()).source_range(range)
+            Part::Event(Event::Html(_), _) => {
+                self.rich(std::slice::from_ref(part), range, "html", false)
             }
             _ => self.content(std::slice::from_ref(part), range, "paragraph", true),
         }
     }
 
-    /// Every cell is its own read-only rich block, so one cell's markup (inline code, links,
-    /// emphasis or an image) can never share a native element with its neighbours. The header row
-    /// keeps the Primer muted surface and each row is closed by a rule the host draws in the table
-    /// border color, which restores the grid a single generated `<table>` used to provide.
+    /// Cells retain independent rich markup and controlled images. Guest-owned style roles provide
+    /// the grid, bold white header and alternating body rows without exposing browser/CSS effects.
     /// Per-row cell identities stay unique even when GFM pads several missing cells at the same byte offset.
     fn table(&self, element: &Element<'_>) -> ui::Node {
         let mut rows = Vec::new();
@@ -248,11 +261,21 @@ impl Renderer<'_> {
                     &wrappers,
                     self.locale,
                 )
-                .padding(4.)
                 .grow();
-                if header {
-                    // The host resolves this generic preset to Primer's muted surface in both themes.
-                    cell.role = "github-muted".into();
+                cell.role = if header {
+                    "github-table-header"
+                } else if row_index % 2 == 1 {
+                    "github-table-alt"
+                } else {
+                    "github-table-cell"
+                }
+                .into();
+                if let Some(Tag::Table(alignments)) = &element.tag {
+                    cell.layout.align = match alignments.get(cell_index) {
+                        Some(pulldown_cmark::Alignment::Center) => Some(ui::Alignment::Center),
+                        Some(pulldown_cmark::Alignment::Right) => Some(ui::Alignment::End),
+                        _ => Some(ui::Alignment::Start),
+                    };
                 }
                 cells.push(cell);
             }
@@ -261,16 +284,13 @@ impl Renderer<'_> {
                     identity(&row.range, &format!("table-row-{row_index}")),
                     cells,
                 )
-                .gap(4.)
+                .gap(0.)
                 .source_range(row.range.clone()),
             );
-            rows.push(ui::Node::new(
-                identity(&row.range, &format!("table-rule-{row_index}")),
-                ui::Kind::Separator,
-            ));
         }
         ui::Node::column(identity(&element.range, "table"), rows)
-            .gap(4.)
+            .role("github-table")
+            .gap(0.)
             .source_range(element.range.clone())
     }
 
@@ -320,7 +340,8 @@ impl Renderer<'_> {
             );
         }
         ui::Node::column(identity(&element.range, "list"), items)
-            .gap(6.)
+            .role("github-list")
+            .gap(4.)
             .source_range(element.range.clone())
     }
 
@@ -342,7 +363,9 @@ impl Renderer<'_> {
         kind: &str,
         paragraph: bool,
     ) -> ui::Node {
-        if has_image(parts) {
+        if has_html(parts) {
+            self.rich(parts, range, kind, paragraph)
+        } else if has_image(parts) {
             let wrappers = if paragraph {
                 vec![Tag::Paragraph]
             } else {
@@ -354,7 +377,7 @@ impl Renderer<'_> {
         }
     }
 
-    /// Generate markup from parser events, never by interpolating unescaped Markdown text or URLs.
+    /// The public writer escapes Markdown; embedded HTML is then filtered into native-only content.
     fn rich(
         &self,
         parts: &[Part<'_>],
@@ -372,32 +395,39 @@ impl Renderer<'_> {
         }
         let mut output = String::new();
         html::push_html(&mut output, events.into_iter());
-        ui::Node::rich_text(identity(&range, kind), output).source_range(range)
+        if has_html(parts) {
+            let id = identity(&range, kind);
+            embedded_html::render(&output, range, id, self.locale)
+        } else {
+            ui::Node::rich_text(identity(&range, kind), output).source_range(range)
+        }
     }
 
-    /// Images leave rich text through native composition; defensive alt text never emits ambient image tags.
-    /// HTML events become escaped text, and no task HTML is emitted.
+    /// Embedded HTML and Markdown images share the filtered native path; task controls stay source-owned.
     fn safe_events<'a>(&self, parts: &[Part<'a>], events: &mut Vec<Event<'a>>) {
         for part in parts {
             match part {
                 Part::Element(element) => {
                     let tag = element.tag.as_ref().unwrap();
-                    if matches!(tag, Tag::Image { .. }) {
-                        events.push(Event::Text(plain_text(&element.children).into()));
-                    } else {
-                        events.push(Event::Start(tag.clone()));
-                        self.safe_events(&element.children, events);
-                        events.push(Event::End(tag.to_end()));
-                    }
-                }
-                Part::Event(Event::Html(text) | Event::InlineHtml(text), _) => {
-                    events.push(Event::Text(text.clone()));
+                    events.push(Event::Start(tag.clone()));
+                    self.safe_events(&element.children, events);
+                    events.push(Event::End(tag.to_end()));
                 }
                 Part::Event(Event::TaskListMarker(_), _) => {}
                 Part::Event(event, _) => events.push(event.clone()),
             }
         }
     }
+}
+
+/// HTML inside image alternative text is literal, just like its Markdown formatting.
+fn has_html(parts: &[Part<'_>]) -> bool {
+    parts.iter().any(|part| match part {
+        Part::Element(element) if matches!(element.tag, Some(Tag::Image { .. })) => false,
+        Part::Element(element) => has_html(&element.children),
+        Part::Event(Event::Html(_) | Event::InlineHtml(_), _) => true,
+        _ => false,
+    })
 }
 
 /// Images can be nested inside emphasis or links; detection does not flatten their surrounding semantics.

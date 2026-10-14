@@ -207,14 +207,14 @@ fn image_error_alternative_text_preserves_the_outer_link_binding() {
     assert!(document(nodes).validate().is_ok());
 }
 
-/// Only real outer links activate images; alt links, raw HTML and code cannot create navigation targets.
+/// Author HTML declares exact native targets; image alternative text and code cannot create targets.
 #[test]
-fn image_alt_html_and_code_cannot_mint_activation_targets() {
+fn html_links_activate_but_image_alt_and_code_cannot_mint_targets() {
     let source = "[![外 内](missing.png)](next.md)\n\n<a href=\"html.md\">伪</a>\n\n```\n[代码](code.md)\n```\n";
     let (index, nodes) = annotated(source);
     let all = descendants(&nodes);
     let linked: Vec<_> = all.iter().filter(|node| !node.links.is_empty()).collect();
-    assert_eq!(linked.len(), 1);
+    assert_eq!(linked.len(), 2);
     let image = linked[0];
     assert!(matches!(image.kind, ui::Kind::Image { .. }));
     assert_eq!(
@@ -225,9 +225,16 @@ fn image_alt_html_and_code_cannot_mint_activation_targets() {
         }]
     );
     assert_eq!(index.resolve(&nodes, &image.id, "next.md"), Some("next.md"));
-    for node in all {
-        for uri in ["inside.md", "html.md", "code.md"] {
+    assert_eq!(
+        index.resolve(&nodes, &linked[1].id, "html.md"),
+        Some("html.md")
+    );
+    for node in &all {
+        for uri in ["inside.md", "code.md"] {
             assert!(index.resolve(&nodes, &node.id, uri).is_none());
+        }
+        if node.id != linked[1].id {
+            assert!(index.resolve(&nodes, &node.id, "html.md").is_none());
         }
     }
     // CommonMark disables an enclosing link when it parses a link inside image alt.

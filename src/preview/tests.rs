@@ -270,12 +270,12 @@ fn table_cells_keep_inline_code_in_independent_rich_blocks() {
     );
     let header: Vec<_> = cells
         .iter()
-        .filter(|cell| cell.role == "github-muted")
+        .filter(|cell| cell.role == "github-table-header")
         .collect();
     assert_eq!(
         header.len(),
         2,
-        "only the header cells keep the muted table surface"
+        "only header cells receive the header presentation"
     );
     assert!(header.iter().all(|cell| matches!(
         &cell.kind,
@@ -314,9 +314,9 @@ fn table_cells_keep_inline_code_in_independent_rich_blocks() {
     }
 }
 
-/// Raw HTML remains literal text; only parsed Markdown images may declare controlled image resources.
+/// Author HTML images use controlled resources; code continues to display literal markup.
 #[test]
-fn raw_html_and_code_never_declare_implicit_images() {
+fn html_images_use_native_resources_and_code_remains_literal() {
     let source = "<img src=\"evil.png\" alt=\"字\">\n\n文字 <img src=\"inline.png\"> \u{0060}![伪](code.png)\u{0060}\n\n![真](img.png)";
     let nodes = blocks(source, "zh-CN").unwrap();
     let all = descendants(&nodes);
@@ -324,12 +324,12 @@ fn raw_html_and_code_never_declare_implicit_images() {
         .iter()
         .filter(|node| matches!(node.kind, ui::Kind::Image { .. }))
         .collect();
-    assert_eq!(images.len(), 1);
-    assert!(
-        matches!(&images[0].kind, ui::Kind::Image { source, alt } if source == "img.png" && alt == "真")
-    );
-    assert!(all.iter().any(|node| matches!(&node.kind,
-        ui::Kind::Text { text } if text.contains("<img src=\"evil.png\""))));
+    assert_eq!(images.len(), 3);
+    for expected in ["evil.png", "inline.png", "img.png"] {
+        assert!(images.iter().any(
+            |node| matches!(&node.kind, ui::Kind::Image { source, .. } if source == expected)
+        ));
+    }
     let rich: String = all
         .iter()
         .filter_map(|node| match &node.kind {
@@ -337,7 +337,6 @@ fn raw_html_and_code_never_declare_implicit_images() {
             _ => None,
         })
         .collect();
-    assert!(rich.contains("&lt;img src="));
     assert!(rich.contains("<code>![伪](code.png)</code>"));
     assert!(!rich.contains("<img"));
 }

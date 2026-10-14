@@ -92,7 +92,7 @@ impl Index {
         self.links.extend(replacement.links);
         self.links.sort_by_key(|link| link.range.start);
     }
-    /// Raw HTML and fenced code are not Link events and never become ambient navigation instructions.
+    /// Markdown links/heading slugs use source events; filtered HTML owns explicit per-leaf targets.
     pub(crate) fn parse(source: &str) -> Self {
         let mut index = Self::default();
         let mut heading: Option<(Range<usize>, String)> = None;
@@ -143,10 +143,7 @@ impl Index {
                         });
                     }
                 }
-                Event::Text(text)
-                | Event::Code(text)
-                | Event::Html(text)
-                | Event::InlineHtml(text) => {
+                Event::Text(text) | Event::Code(text) => {
                     if let Some((_, label)) = &mut heading {
                         label.push_str(&text);
                     }
@@ -178,7 +175,12 @@ impl Index {
     /// CommonMark links outside image alt text are non-nested and source-ordered, allowing a bounded range scan.
     pub(crate) fn annotate(&self, nodes: &mut [ui::Node]) {
         for node in nodes {
-            node.links.clear();
+            // HTML ranges cover an entire source block. Preserve the tokenizer's exact per-fragment
+            // targets instead of granting every fragment every link that intersects that block.
+            let embedded = crate::preview::embedded_html::owns(node);
+            if !embedded {
+                node.links.clear();
+            }
             match &mut node.kind {
                 ui::Kind::Column { children } | ui::Kind::Row { children } => {
                     self.annotate(children)
@@ -187,6 +189,9 @@ impl Index {
                     self.annotate(std::slice::from_mut(content.as_mut()))
                 }
                 ui::Kind::RichText { .. } | ui::Kind::Image { .. } | ui::Kind::Text { .. } => {
+                    if embedded {
+                        continue;
+                    }
                     let Some(range) = node.source_range else {
                         continue;
                     };
@@ -221,7 +226,12 @@ impl Index {
     /// Image-split rich fragments may cover just the visible label, so their parser ranges must intersect.
     /// Only the exact rendered href grants a match; return the parsed semantic URI for domain classification.
     /// A matching href elsewhere cannot grant an event from a raw-HTML or unrelated node.
-    pub(crate) fn resolve(&self, nodes: &[ui::Node], id: &str, href: &str) -> Option<&str> {
+    pub(crate) fn resolve<'a>(
+        &'a self,
+        nodes: &'a [ui::Node],
+        id: &str,
+        href: &str,
+    ) -> Option<&'a str> {
         let Some(node) = find(nodes, id) else {
             return None;
         };
@@ -238,6 +248,20 @@ impl Index {
         let Some(range) = &node.source_range else {
             return None;
         };
+        if crate::preview::embedded_html::owns(node) {
+            let target = node.links.iter().find(|target| target.uri == href)?;
+            // A Markdown link in mixed markup retains its semantic (e.g. email/Unicode) source URI.
+            return Some(
+                self.links
+                    .iter()
+                    .find(|link| {
+                        link.href == href
+                            && link.range.start < range.end
+                            && range.start < link.range.end
+                    })
+                    .map_or(target.uri.as_str(), |link| link.uri.as_str()),
+            );
+        }
         self.links
             .iter()
             .find(|link| {

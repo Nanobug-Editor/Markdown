@@ -15,6 +15,16 @@ pub(super) fn flow<'source>(
     locale: &str,
 ) -> ui::Node {
     let base = identity(&range, kind);
+    // HTML images need the same controlled resources as Markdown images. Filter the complete
+    // fragment so HTML formatting remains balanced around both kinds of image and table cell.
+    if super::has_html(parts) {
+        let mut events: Vec<_> = wrappers.iter().cloned().map(Event::Start).collect();
+        super::Renderer { locale }.safe_events(parts, &mut events);
+        events.extend(wrappers.iter().rev().map(|tag| Event::End(tag.to_end())));
+        let mut output = String::new();
+        html::push_html(&mut output, events.into_iter());
+        return super::embedded_html::render(&output, range, base, locale);
+    }
     let mut flow = Flow {
         base: &base,
         locale,

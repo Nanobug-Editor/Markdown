@@ -80,9 +80,9 @@ fn heading_targets_follow_images_quotes_setext_and_literal_html() {
     assert!(index.heading(&nodes, "假标题").is_none());
 }
 
-/// Link bindings come from actual Markdown events in the clicked native node, never a matching URI elsewhere.
+/// Link bindings come from actual Markdown/HTML in the clicked native node, never a matching URI elsewhere.
 #[test]
-fn raw_html_code_and_unrelated_text_cannot_supply_link_events() {
+fn author_html_links_are_bound_to_their_own_native_node() {
     let source =
         "[真的](next.md)\n\n普通文字\n\n<a href=\"next.md\">假</a>\n\n```\n[代码](next.md)\n```\n";
     let index = Index::parse(source);
@@ -92,11 +92,13 @@ fn raw_html_code_and_unrelated_text_cannot_supply_link_events() {
         Some("next.md")
     );
     assert!(index.resolve(&nodes, "b-0-paragraph", "other.md").is_none());
-    for (text, kind) in [
-        ("普通文字", "paragraph"),
-        ("<a href", "raw-html"),
-        ("```", "code"),
-    ] {
+    let html = nodes
+        .iter()
+        .find(|node| crate::preview::embedded_html::owns(node))
+        .unwrap();
+    assert_eq!(index.resolve(&nodes, &html.id, "next.md"), Some("next.md"));
+    assert!(index.resolve(&nodes, &html.id, "other.md").is_none());
+    for (text, kind) in [("普通文字", "paragraph"), ("```", "code")] {
         let id = format!("b-{}-{kind}", source.find(text).unwrap());
         assert!(index.resolve(&nodes, &id, "next.md").is_none(), "{id}");
     }

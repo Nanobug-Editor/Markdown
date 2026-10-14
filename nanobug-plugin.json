@@ -35,6 +35,10 @@
       "destination": "licenses/pulldown-cmark-LICENSE"
     },
     {
+      "source": "licenses/html",
+      "destination": "licenses/html"
+    },
+    {
       "source": "LICENSE",
       "destination": "LICENSE"
     }

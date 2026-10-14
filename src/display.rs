@@ -269,12 +269,33 @@ impl State {
                 0x1f2328, 0xffffff, 0xf6f8fa, 0xd1d9e0, 0x0969da, 0x59636e, 0xf0f1f2,
             )
         };
-        for role in ["rich_text", "github", "github-muted"] {
+        for role in [
+            "github",
+            "github-muted",
+            "github-quote",
+            "github-quote-text",
+            "github-list",
+            "github-table",
+            "github-table-cell",
+            "github-table-header",
+            "github-table-alt",
+        ] {
             for (key, color) in [
-                ("foreground", fg),
+                (
+                    "foreground",
+                    if role.starts_with("github-quote") {
+                        muted_fg
+                    } else {
+                        fg
+                    },
+                ),
                 (
                     "background",
-                    if role == "github-muted" { muted } else { bg },
+                    if matches!(role, "github-muted" | "github-table-alt") {
+                        muted
+                    } else {
+                        bg
+                    },
                 ),
                 ("border", border),
                 ("accent", link),
@@ -308,6 +329,34 @@ impl State {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Validate the complete published file surface, including colors added after preview composition.
+    #[test]
+    fn readme_styles_and_colors_fit_the_existing_public_quotas_in_both_themes() {
+        for dark in [false, true] {
+            let mut state = State::default();
+            state.environment.dark = dark;
+            let version = api::DocumentVersion {
+                id: "source".into(),
+                path: "README.md".into(),
+                revision: 1,
+            };
+            state.source = Some(crate::Source { version: version.clone(), text: "# README\n\n<p align='center'><img src='logo.png' width='128' height='128'></p>\n".into() });
+            state.file = Some(api::FileContext {
+                version: api::FileVersion {
+                    id: "source".into(),
+                    path: "README.md".into(),
+                    revision: 1,
+                },
+                file_type: "md".into(),
+                text: Some(version),
+            });
+            state.refresh();
+            let document = state.view().document;
+            assert!(document.content_colors.len() <= 64);
+            assert!(document.validate().is_ok(), "{:?}", document.validate());
+        }
+    }
 
     /// Finite imports keep all known switches; invalid and future records must not be rewritten.
     #[test]

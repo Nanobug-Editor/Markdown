@@ -12,16 +12,20 @@ pub(super) use targets::Index;
 /// Navigation feedback is independent of formatting and saved-image receipts.
 #[derive(Default)]
 pub(super) struct Navigation {
+    /// SDK ownership survives failed cleanup; Opening/Waiting remain navigation policy rather than handles.
+    intent: api::guest::EditorIntent,
     pending: Option<Pending>,
     waiting: Option<Waiting>,
     issue: Option<Issue>,
+    /// Unresolved release feedback is separate from the result of an already executed open or reveal.
+    cleanup: Option<api::ErrorCode>,
     /// Preview priority outlives a Unit receipt: native reveal is queued before its actual paint.
     /// This identity contains no geometry or mutable text and is retired by source input or invalidation.
     viewport: Option<api::DocumentVersion>,
 }
 
+/// Domain metadata for the SDK's current request, never an additional resource owner.
 struct Pending {
-    task: api::guest::EditorTask,
     document: api::DocumentVersion,
     phase: Phase,
 }
@@ -60,7 +64,7 @@ enum Reason {
 
 impl Navigation {
     /// Only an exact current source version may retain the navigation's preview-first scroll policy.
-    /// A successful queued reveal keeps this policy even after its EditorTask has completed.
+    /// A successful queued reveal keeps this policy even after its EditorIntent has completed.
     pub(super) fn controls_viewport(&self, document: Option<&api::DocumentVersion>) -> bool {
         self.viewport.is_some() && self.viewport.as_ref() == document
     }
@@ -96,40 +100,57 @@ impl Navigation {
         let Some(uri) = index.resolve(nodes, node, uri) else {
             return false;
         };
-        self.cancel_pending();
-        let previous = self.issue.take();
-        let resulting_revision = revision.saturating_add(u64::from(previous.is_some()));
-        let result = targets::destination(uri).and_then(|destination| match destination {
-            Destination::Anchor(fragment) => {
-                self.reveal(&source.version, index, nodes, &fragment, resulting_revision)
-            }
-            Destination::Relative { path, fragment } => self.begin(
-                &source.version,
+        let previous = (self.issue.take(), self.cleanup);
+        let resulting_revision =
+            revision.saturating_add(u64::from(previous.0.is_some() || previous.1.is_some()));
+        // Resolve before replacement, so malformed targets still retire old interest without retrying a failed close.
+        let target = targets::destination(uri).and_then(|destination| match destination {
+            Destination::Anchor(fragment) => index
+                .heading(nodes, &fragment)
+                .map(|node| {
+                    (
+                        api::NavigationTarget::PreviewNode {
+                            panel: "preview".into(),
+                            node,
+                            ui_revision: resulting_revision,
+                        },
+                        Phase::Revealing,
+                    )
+                })
+                .ok_or(Reason::InvalidAnchor),
+            Destination::Relative { path, fragment } => Ok((
                 api::NavigationTarget::RelativeDocument { path },
                 Phase::Opening {
                     fragment,
                     transition: Opening::default(),
                 },
-            ),
-            Destination::External(url) => self.begin(
-                &source.version,
-                api::NavigationTarget::ExternalUrl { url },
-                Phase::External,
-            ),
+            )),
+            Destination::External(url) => {
+                Ok((api::NavigationTarget::ExternalUrl { url }, Phase::External))
+            }
         });
+        let result = match target {
+            Ok((target, phase)) => self.begin(&source.version, target, phase),
+            Err(reason) => {
+                self.cancel_pending();
+                Err(reason)
+            }
+        };
         if let Err(reason) = result {
             self.issue = Some(Issue {
                 document: source.version.clone(),
                 reason,
             });
         }
-        previous != self.issue
+        previous != (self.issue.clone(), self.cleanup)
     }
 
     /// Preparation/new instance state cancels all transient navigation ownership and feedback.
-    pub(super) fn reset(&mut self) {
-        self.cancel_pending();
+    /// Returns false while cleanup is incomplete; callers must retain this owner instead of replacing State.
+    pub(super) fn reset(&mut self) -> bool {
+        let complete = self.cancel_pending();
         self.issue = None;
+        complete
     }
 
     /// The first relative-open Preview can precede its receipt. Any further switch, edit or close cancels it.
@@ -197,14 +218,13 @@ impl Navigation {
         nodes: &[ui::Node],
         revision: u64,
     ) -> bool {
-        let Some(mut pending) = self.pending.take() else {
+        let Some(update) = self.intent.update(event) else {
             return false;
         };
-        let Some(update) = pending.task.update(event) else {
-            self.pending = Some(pending);
+        let Some(pending) = self.pending.take() else {
             return false;
         };
-        let previous = self.issue.clone();
+        let previous = (self.issue.clone(), self.cleanup);
         match update {
             api::RequestUpdate::Accepted | api::RequestUpdate::Progress { .. } => {
                 self.pending = Some(pending)
@@ -231,13 +251,20 @@ impl Navigation {
                 });
             }
         }
-        previous != self.issue
+        previous != (self.issue.clone(), self.cleanup)
     }
 
     /// An old document's navigation error cannot replace the current document's independent feedback.
     pub(super) fn message(&self, source: Option<&Source>, english: bool) -> Option<&'static str> {
-        let issue = self.issue.as_ref()?;
         let source = source?;
+        if self.cleanup.is_some() {
+            return Some(if english {
+                "The previous navigation request could not be released. Retry the link; any completed open remains."
+            } else {
+                "上次导航请求尚未释放，请重试链接；已完成的打开操作仍会保留。"
+            });
+        }
+        let issue = self.issue.as_ref()?;
         if source.version.id != issue.document.id || source.version.path != issue.document.path {
             return None;
         }
@@ -388,14 +415,23 @@ impl Navigation {
         target: api::NavigationTarget,
         phase: Phase,
     ) -> Result<(), Reason> {
-        let task = api::guest::EditorTask::start(
-            api::EditorOperation::NavigateDocument {
-                document: document.clone(),
-                target,
-            },
-            30_000,
-        )
-        .map_err(|error| Reason::Host(error.code))?;
+        self.pending = None;
+        self.waiting = None;
+        self.viewport = None;
+        self.intent
+            .replace(
+                api::EditorOperation::NavigateDocument {
+                    document: document.clone(),
+                    target,
+                },
+                30_000,
+                api::CancelMode::TryTerminate,
+            )
+            .map_err(|error| {
+                self.cleanup = error.cleanup.pending.first().map(|failure| failure.code);
+                Reason::Host(error.cause.code)
+            })?;
+        self.cleanup = None;
         if matches!(
             &phase,
             Phase::Opening {
@@ -406,7 +442,6 @@ impl Navigation {
             self.viewport = Some(document.clone());
         }
         self.pending = Some(Pending {
-            task,
             document: document.clone(),
             phase,
         });
@@ -414,17 +449,21 @@ impl Navigation {
     }
 
     /// Cancellation retires request and receipt correlation even when an already-started open cannot be rolled back.
-    fn cancel_pending(&mut self) {
+    fn cancel_pending(&mut self) -> bool {
         self.viewport = None;
-        self.retire_task();
+        self.retire_task()
     }
 
-    /// Scroll input can replace receipt correlation while keeping the current preview as the reflow driver.
-    fn retire_task(&mut self) {
+    /// Scroll input retires correlation and explicitly closes it while retaining the preview reflow driver.
+    /// Failed releases stay in EditorIntent; an external open already performed is never rolled back.
+    fn retire_task(&mut self) -> bool {
         self.waiting = None;
-        if let Some(pending) = self.pending.take() {
-            let _ = pending.task.cancel(api::CancelMode::TryTerminate);
+        if self.pending.take().is_some() {
+            let _ = self.intent.cancel(api::CancelMode::TryTerminate);
         }
+        let report = self.intent.close();
+        self.cleanup = report.pending.first().map(|failure| failure.code);
+        report.is_complete()
     }
 }
 

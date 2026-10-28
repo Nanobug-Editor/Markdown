@@ -1,12 +1,15 @@
-# Markdown
+# Markdown for Nanobug
 
 Local candidate 0.18.6 uses the configurable native `Editor` contract (`ui.code_editor ^2`, `editor.layout ^2`). It requires the matching development host; content, Undo/Redo and existing plugin data are retained. Build this uncommitted candidate with that host, rather than the historical host revision below.
+
 
 **English** · [简体中文](https://github.com/Nanobug-Editor/Markdown/blob/main/README.zh-CN.md)
 
 Markdown source editing, native preview, format toolbar and synchronized scrolling. The stable installation ID is `markdown`; the first independent release is `0.17.1`.
 
-The project is named **Markdown**. Version `0.18.2` follows GitHub README image alignment and alternative-text behavior, with Primer typography and block styling. Task focus and the 256 KiB preview budget are retained; larger source files remain editable. Published ZIP bytes remain frozen and the installation ID is unchanged.
+The project is named **Markdown for Nanobug**. Version `0.18.5` adds native heading outlines and section folding, and uses the public SDK's independent editor intents for formatting and explicit navigation. Failed request cleanup blocks replacement until an explicit retry; cancelling a request preserves edits and document/browser opens that already completed. It retains `0.18.2` GitHub README image alignment and alternative-text behavior, with Primer typography and block styling. Task focus and the 256 KiB preview budget are retained; larger source files remain editable. Published ZIP bytes remain frozen and the installation ID is unchanged.
+
+The outline follows ATX H1–H6 and Setext H1/H2 headings, preserving duplicate and Chinese titles, skipped levels and visible inline text. Clicking a title targets its source content; inline-code delimiters are excluded. Fenced/indented code and raw HTML do not create Markdown headings. Unsaved edits refresh the tree. Outline parsing has the public 1 MiB source limit, independent of the 256 KiB preview budget; oversized trees fail explicitly instead of omitting headings.
 
 HTML headings, paragraphs, inline formatting, line breaks and tables render natively. HTML images and links use the same controlled image loading and explicit navigation as Markdown. Scripts, event attributes, CSS and embedded pages are filtered out; this is a native HTML subset rather than a browser layout engine. HTML images share their containing block's source mapping. HTML `id` anchors, interactive forms and CSS sizing are not supported; ordinary Markdown heading anchors continue to work.
 
@@ -18,7 +21,7 @@ This repository is the authoritative plugin source. The [marketplace registry](h
 
 ## Build independently
 
-Use Nanobug built from the commit pinned in `host-sdk.json`, which exposes `ui.styles 1.0`, with the required native toolchain and WASM target already available. Set `$pluginHost` to that executable's absolute path:
+Use a Nanobug build exposing `ui.styles 1.0` and `language.structure 1.0`, with the required native toolchain and WASM target already available. `host-sdk.json` retains the historical released SDK pin; this local candidate needs the matching host recorded in its verification document. Set `$pluginHost` to that executable's absolute path:
 
 ```powershell
 # The public host entry supplies its SDK and packages the project without a source copy.

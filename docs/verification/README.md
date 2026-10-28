@@ -29,6 +29,7 @@
 - [23 — 内嵌 HTML 原生预览](23-embedded-html.md)（Markdown 0.18.0 本地候选：HTML 子集、受控图片与链接；实际验收范围见记录）。
 - [24 — HTML 图片 width/height](24-html-image-dimensions.md)（Markdown 0.18.1 本地候选：属性传递、通用原生几何、单边比例与说明布局，83 项单元及 3 项原生场景通过）。
 - [25 — GitHub README 图片语义与样式](25-github-readme-presentation.md)（Markdown 0.18.2 本地候选：align、alt 与 Primer 排版；实际验收范围见记录）。
+- [26 — EditorIntent 与原生标题大纲](26-sdk-intents-outline.md)（Markdown 0.18.5 本地候选：A2 两个独立意图、大纲与 A3 保留结论；实际结果和限制见记录）。
 
 - 每张工单完成后在本目录建立对应编号的验收文档，并从此处和[工单目录](../tickets/README.md)链接。
 - 记录实际代码基线、包版本、命令、结果、原生可观察行为、失败归因、跳过项与平台限制。

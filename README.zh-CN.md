@@ -1,12 +1,15 @@
-# Markdown
+# Markdown for Nanobug
 
 本地候选 0.18.6 使用统一可配置原生 `Editor` 契约（`ui.code_editor ^2`、`editor.layout ^2`），需要配套开发宿主；保留原内容、Undo/Redo 与插件数据。此未提交候选使用配套宿主构建，原有固定宿主记录仅用于历史版本。
+
 
 [English](https://github.com/Nanobug-Editor/Markdown/blob/main/README.md) · **简体中文**
 
 Markdown 源码编辑、原生预览、格式工具栏和同步滚动。 插件 ID 为 `markdown`，首次独立发布版本为 `0.17.1`；原有安装身份、设置和私有数据保持连续。
 
-项目名为 **Markdown**。`0.18.2` 按 GitHub README 的逻辑处理图片对齐和替代文字，并采用 Primer 字号、间距及内容块样式。任务框焦点及 256 KiB 预览预算继续保留；超过预算的源码仍可正常编辑。已发布 ZIP 字节继续冻结，安装 ID 保持不变。
+项目名为 **Markdown for Nanobug**。`0.18.5` 新增原生标题大纲与章节折叠，并为格式编辑和显式导航分别使用公开 SDK 的编辑意图助手。请求清理失败时阻止替代分配，等待显式重试；取消请求仍保留已完成的编辑、文档打开或浏览器打开。继续保留 `0.18.2` 的 GitHub README 图片对齐、替代文字和 Primer 字号、间距及内容块样式。任务框焦点及 256 KiB 预览预算继续保留；超过预算的源码仍可正常编辑。已发布 ZIP 字节继续冻结，安装 ID 保持不变。
+
+大纲识别 ATX H1～H6 和 Setext H1/H2 标题，保留中文、重复标题、跳级层次与行内可见文本。点击标题定位到源码内容，行内代码的反引号不计入定义范围。围栏代码、缩进代码和原始 HTML 不生成 Markdown 标题；未保存编辑会刷新大纲。大纲使用公开的 1 MiB 源码上限，独立于 256 KiB 预览预算；超限结构明确返回失败，不省略标题。
 
 HTML 标题、段落、行内格式、换行和表格使用原生渲染；HTML 图片和链接沿用 Markdown 的受控图片加载与显式导航。脚本、事件属性、CSS 和嵌入页面会被过滤。支持范围为原生 HTML 子集，布局由原生渲染器决定。HTML 图片按所在内容块映射源码；暂不支持 HTML `id` 锚点、交互表单和 CSS 尺寸，普通 Markdown 标题锚点继续可用。
 
@@ -18,7 +21,7 @@ HTML 标题、段落、行内格式、换行和表格使用原生渲染；HTML �
 
 ## 独立构建
 
-使用 host-sdk.json 固定提交构建的 Nanobug 程序，该版本提供 `ui.styles 1.0`，并准备原生编译环境及清单所需目标。将 `$pluginHost` 设为该程序的绝对路径：
+使用支持 `ui.styles 1.0` 和 `language.structure 1.0` 的 Nanobug 程序，并准备原生编译环境及清单所需目标。host-sdk.json 保留历史已发布 SDK 的固定来源；本地候选需使用验收文档记录的配套宿主。将 `$pluginHost` 设为该程序的绝对路径：
 
 ```powershell
 # 通过宿主公开入口生成固定版本 ZIP，不复制 SDK 源码。

@@ -10,12 +10,16 @@ use plugin_protocol::api;
 /// Transient task ownership ends on a newer intent, changed source or terminal host result.
 #[derive(Default)]
 pub(super) struct Formatting {
+    /// The SDK alone owns correlation and failed releases; domain stages retain no live handle.
+    intent: api::guest::EditorIntent,
     pending: Option<Pending>,
     error: Option<Issue>,
+    /// Cleanup failure is independent of an edit result and survives source invalidation for explicit retry.
+    cleanup: Option<api::ErrorCode>,
 }
 
+/// One read/write stage is bound to the immutable source that produced its plan.
 struct Pending {
-    task: api::guest::EditorTask,
     document: api::DocumentVersion,
     kind: IntentKind,
     phase: Phase,
@@ -66,46 +70,52 @@ impl Formatting {
         self.start_intent(Intent::Task(change), source)
     }
 
-    /// One owner lets newer task, toolbar and image intents retire old text writes consistently.
+    /// The source and action replace only this feature's current intent, keeping task/toolbar feedback distinct.
     fn start_intent(&mut self, intent: Intent, source: Option<&Source>) -> bool {
-        self.cancel_pending();
-        let previous = self.error.take();
+        let previous = (self.error.take(), self.cleanup);
         let kind = intent.kind();
         if let Some(source) = source {
-            match api::guest::EditorTask::start(
+            self.pending = None;
+            match self.intent.replace(
                 api::EditorOperation::ReadDocumentSelection {
                     document: source.version.clone(),
                 },
                 30_000,
+                api::CancelMode::TryTerminate,
             ) {
-                Ok(task) => {
+                Ok(_) => {
+                    self.cleanup = None;
                     self.pending = Some(Pending {
-                        task,
                         document: source.version.clone(),
                         kind,
                         phase: Phase::Reading(intent),
                     });
                 }
                 Err(error) => {
+                    // replace retains any failed release and refuses a new allocation until it succeeds.
+                    self.cleanup = error.cleanup.pending.first().map(|failure| failure.code);
                     self.error = Some(Issue {
                         kind,
-                        reason: Reason::Host(error.code),
+                        reason: Reason::Host(error.cause.code),
                     })
                 }
             }
         } else {
+            self.cancel_pending();
             self.error = Some(Issue {
                 kind,
                 reason: Reason::Unavailable,
             });
         }
-        previous != self.error
+        previous != (self.error, self.cleanup)
     }
 
     /// A new readonly snapshot retires both stages; it never applies an edit computed from old bytes.
-    pub(super) fn source_changed(&mut self) {
-        self.cancel_pending();
+    /// Returns false when an owned request still needs cleanup; Prepare must keep this owner on failure.
+    pub(super) fn source_changed(&mut self) -> bool {
+        let complete = self.cancel_pending();
         self.error = None;
+        complete
     }
 
     /// Consume only this intent's request updates; unrelated and cancelled-intent completions are ignored.
@@ -116,14 +126,13 @@ impl Formatting {
         source: Option<&Source>,
         english: bool,
     ) -> bool {
-        let Some(mut pending) = self.pending.take() else {
+        let Some(update) = self.intent.update(notification) else {
             return false;
         };
-        let Some(update) = pending.task.update(notification) else {
-            self.pending = Some(pending);
+        let Some(pending) = self.pending.take() else {
             return false;
         };
-        let previous = self.error;
+        let previous = (self.error, self.cleanup);
         match update {
             api::RequestUpdate::Accepted | api::RequestUpdate::Progress { .. } => {
                 self.pending = Some(pending);
@@ -144,11 +153,18 @@ impl Formatting {
                 });
             }
         }
-        previous != self.error
+        previous != (self.error, self.cleanup)
     }
 
     /// Translate a bounded domain reason in the current UI locale, including errors from either stage.
     pub(super) fn message(&self, english: bool) -> Option<&'static str> {
+        if self.cleanup.is_some() {
+            return Some(if english {
+                "The previous edit request could not be released. Retry the action; any committed edit remains."
+            } else {
+                "上次编辑请求尚未释放，请重试操作；已提交的编辑仍会保留。"
+            });
+        }
         let issue = self.error?;
         if issue.kind == IntentKind::Task {
             return Some(task_message(issue.reason, english));
@@ -243,22 +259,26 @@ impl Formatting {
                     start: edit.selection.start,
                     end: edit.selection.end,
                 };
-                let task = api::guest::EditorTask::start(
-                    api::EditorOperation::ReplaceDocumentRange {
-                        document: document.clone(),
-                        range: api::TextRange {
-                            start: edit.range.start,
-                            end: edit.range.end,
+                self.intent
+                    .replace(
+                        api::EditorOperation::ReplaceDocumentRange {
+                            document: document.clone(),
+                            range: api::TextRange {
+                                start: edit.range.start,
+                                end: edit.range.end,
+                            },
+                            text: edit.text,
+                            selection: resulting_selection,
+                            expected_selection: Some(range),
                         },
-                        text: edit.text,
-                        selection: resulting_selection,
-                        expected_selection: Some(range),
-                    },
-                    30_000,
-                )
-                .map_err(|error| Reason::Host(error.code))?;
+                        30_000,
+                        api::CancelMode::TryTerminate,
+                    )
+                    .map_err(|error| {
+                        self.cleanup = error.cleanup.pending.first().map(|failure| failure.code);
+                        Reason::Host(error.cause.code)
+                    })?;
                 self.pending = Some(Pending {
-                    task,
                     document,
                     kind: pending.kind,
                     phase: Phase::Writing(resulting_selection),
@@ -286,11 +306,15 @@ impl Formatting {
         }
     }
 
-    /// Best-effort cancellation retires correlation even if an already-started transaction cannot stop.
-    fn cancel_pending(&mut self) {
-        if let Some(pending) = self.pending.take() {
-            let _ = pending.task.cancel(api::CancelMode::TryTerminate);
+    /// Retire result interest and release the identity, preserving failed cleanup in the SDK for explicit retry.
+    /// Cancellation cannot roll back an already committed edit; only the close report proves local release.
+    fn cancel_pending(&mut self) -> bool {
+        if self.pending.take().is_some() {
+            let _ = self.intent.cancel(api::CancelMode::TryTerminate);
         }
+        let report = self.intent.close();
+        self.cleanup = report.pending.first().map(|failure| failure.code);
+        report.is_complete()
     }
 }
 

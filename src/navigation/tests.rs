@@ -1,7 +1,7 @@
 //! Pure navigation regressions observe parser-derived targets and correlation without invoking native side effects.
 
 use super::{
-    Index, Navigation, Pending, Phase, Reason,
+    Index, Reason,
     opening::{Arrival, Opening},
     targets::{Destination, destination},
 };
@@ -373,92 +373,6 @@ fn relative_open_rejects_third_documents_reopens_and_changed_revisions() {
     );
     assert!(!Opening::default().observe(&origin, Some(&version("origin", "notes.md", 4))));
     assert!(!Opening::default().observe(&origin, None));
-}
-
-/// A fake accepted handle exercises public SDK correlation without starting a host operation in pure tests.
-fn owner(document: api::DocumentVersion, resource: u64) -> (Navigation, api::ResourceHandle) {
-    let handle = api::ResourceHandle {
-        instance: "test".into(),
-        scope: "workspace".into(),
-        resource,
-    };
-    let owner = Navigation {
-        pending: Some(Pending {
-            task: api::guest::EditorTask::from_accepted(handle.clone()),
-            document,
-            phase: Phase::External,
-        }),
-        ..Default::default()
-    };
-    (owner, handle)
-}
-
-/// Only the owning task can finish; duplicate terminal receipts remain inert and never change text.
-#[test]
-fn request_completion_ignores_unrelated_and_post_terminal_receipts() {
-    let source = Source {
-        version: version("origin", "notes.md", 3),
-        text: "未保存正文".into(),
-    };
-    let (mut navigation, handle) = owner(source.version.clone(), 1);
-    let unrelated = api::Notification::Request {
-        handle: api::ResourceHandle {
-            resource: 2,
-            ..handle.clone()
-        },
-        update: api::RequestUpdate::Completed {
-            result: Ok(api::EditorValue::Unit),
-        },
-    };
-    assert!(!navigation.request(&unrelated, Some(&source), &Index::default(), &[], 5));
-    assert!(navigation.pending.is_some());
-    let completed = api::Notification::Request {
-        handle,
-        update: api::RequestUpdate::Completed {
-            result: Ok(api::EditorValue::Unit),
-        },
-    };
-    assert!(!navigation.request(&completed, Some(&source), &Index::default(), &[], 5));
-    assert!(navigation.pending.is_none());
-    assert!(!navigation.request(&completed, Some(&source), &Index::default(), &[], 5));
-    assert_eq!(source.text, "未保存正文");
-}
-
-/// Terminal timeouts release ownership and produce bilingual feedback only for their bound source document.
-#[test]
-fn request_timeout_feedback_is_localized_and_source_bound() {
-    let source = Source {
-        version: version("origin", "notes.md", 3),
-        text: String::new(),
-    };
-    let (mut navigation, handle) = owner(source.version.clone(), 3);
-    let timeout = api::Notification::Request {
-        handle,
-        update: api::RequestUpdate::Cancelled {
-            reason: api::ErrorCode::TimedOut,
-            effect: api::CancellationEffect::NotExecuted,
-        },
-    };
-    assert!(navigation.request(&timeout, Some(&source), &Index::default(), &[], 5));
-    assert!(navigation.pending.is_none());
-    assert!(
-        navigation
-            .message(Some(&source), false)
-            .unwrap()
-            .contains("超时")
-    );
-    assert!(
-        navigation
-            .message(Some(&source), true)
-            .unwrap()
-            .contains("timed out")
-    );
-    let other = Source {
-        version: version("other", "other.md", 1),
-        text: String::new(),
-    };
-    assert!(navigation.message(Some(&other), true).is_none());
-    assert!(navigation.message(None, true).is_none());
 }
 
 /// A real parsed missing-anchor action reports outside the scrolling preview as well as in the source toolbar.

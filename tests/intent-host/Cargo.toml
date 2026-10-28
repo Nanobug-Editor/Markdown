@@ -1,0 +1,15 @@
+[package]
+name = "markdown-intent-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# The transport fixture is independent from the guest workspace and uses the same host-managed SDK.
+[workspace]
+
+[dependencies]
+plugin-protocol = "=0.2.0"
+serde_json = "1.0"
+wasmtime = { version = "=36.0.16", default-features = false, features = ["component-model", "cranelift", "runtime", "std"] }
+wasmtime-wasi = "=36.0.16"
+zip = { version = "4", default-features = false, features = ["deflate"] }

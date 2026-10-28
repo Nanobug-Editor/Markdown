@@ -15,6 +15,7 @@ mod incremental;
 mod navigation;
 mod preview;
 mod scrolling;
+mod structure;
 mod tasks;
 mod toolbar;
 
@@ -60,6 +61,17 @@ impl Guest for MarkdownPlugin {
     /// Source snapshots arrive through Preview; image saves and text writes use correlated host editor tasks.
     fn dispatch(payload: String) -> Result<String, String> {
         api::guest::dispatch(&payload, |message| {
+            if let api::Input::Event {
+                event: api::Notification::LanguageStructure(request),
+                ..
+            } = &message
+            {
+                // The pure role never touches preview state, request owners, persistence or host IO.
+                return Ok(api::Output {
+                    language_structure: Some(structure::describe(request)?),
+                    ..Default::default()
+                });
+            }
             STATE.with(|cell| {
                 let mut state = cell.borrow_mut();
                 match message {
@@ -74,13 +86,27 @@ impl Guest for MarkdownPlugin {
                                 "Unsupported Markdown preview snapshot",
                             ));
                         }
-                        state.formatting.source_changed();
+                        // Both owners attempt cleanup even if the first fails. Their SDKs retain failed handles.
+                        let formatting_closed = state.formatting.source_changed();
                         state.imports.superseded();
-                        state.navigation.reset();
+                        let navigation_closed = state.navigation.reset();
+                        state.scrolling.reset();
+                        if !formatting_closed || !navigation_closed {
+                            return Err(api::Failure::new(
+                                api::ErrorCode::OperationFailed,
+                                "Markdown request cleanup is incomplete; retry preparation",
+                            ));
+                        }
+                        // Replaced SaveImageInput operations may already have written files; keep their receipt ledger.
+                        let imports = std::mem::take(&mut state.imports);
                         *state = State {
                             environment,
+                            imports,
                             ..Default::default()
                         };
+                        // Pure language workers also prepare this component and may not publish preview UI.
+                        // Ordinary preview activation and Preview events publish their own current scene afterward.
+                        return Ok(api::Output::default());
                     }
                     api::Input::Event { panel, event } => {
                         if state.viewport_event(panel.as_deref(), &event) {

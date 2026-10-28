@@ -1,5 +1,7 @@
 # Markdown
 
+Local candidate 0.18.6 uses the configurable native `Editor` contract (`ui.code_editor ^2`, `editor.layout ^2`). It requires the matching development host; content, Undo/Redo and existing plugin data are retained. Build this uncommitted candidate with that host, rather than the historical host revision below.
+
 **English** · [简体中文](https://github.com/Nanobug-Editor/Markdown/blob/main/README.zh-CN.md)
 
 Markdown source editing, native preview, format toolbar and synchronized scrolling. The stable installation ID is `markdown`; the first independent release is `0.17.1`.

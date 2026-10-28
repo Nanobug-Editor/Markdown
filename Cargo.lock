@@ -224,7 +224,7 @@ checksum = "c41e0c4fef86961ac6d6f8a82609f55f31b05e4fce149ac5710e439df7619ba4"
 
 [[package]]
 name = "markdown-guest"
-version = "0.18.2"
+version = "0.18.6"
 dependencies = [
  "html5ever",
  "plugin-protocol",
@@ -338,6 +338,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "unicode-segmentation",
  "wit-bindgen",
 ]
 
@@ -563,6 +564,12 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
+
+[[package]]
+name = "unicode-segmentation"
+version = "1.13.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c6f5d3c3b1bf09027a88a6bc961fc00497d651009560b5463668dc81b0fa87a8"
 
 [[package]]
 name = "unicode-xid"

@@ -171,9 +171,7 @@ impl State {
         if let Some(source) = &file.text {
             let editor = ui::Node::new(
                 "markdown-native-editor",
-                ui::Kind::NativeEditor {
-                    document: source.clone(),
-                },
+                ui::Kind::Editor(ui::Editor::document(source.clone())),
             )
             .grow();
             document.root = match self.display.mode {

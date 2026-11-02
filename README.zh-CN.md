@@ -1,5 +1,7 @@
 # Markdown for Nanobug
 
+版本 **0.18.7** 面向 2026-11-02 的 Nanobug 内部测试版，使用公开宿主 SDK 构建。保留安装 ID 和权限；包内附带的 Windows 原生辅助程序使用静态运行库。
+
 本地候选 0.18.6 使用统一可配置原生 `Editor` 契约（`ui.code_editor ^2`、`editor.layout ^2`），需要配套开发宿主；保留原内容、Undo/Redo 与插件数据。此未提交候选使用配套宿主构建，原有固定宿主记录仅用于历史版本。
 
 

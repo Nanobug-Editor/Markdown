@@ -3,7 +3,7 @@ file_icons = "icons.json"
 [plugin]
 id = "markdown"
 name = "Markdown"
-version = "0.18.7"
+version = "0.18.8"
 host_version = ">=0.1.0"
 
 [[language_definitions]]
